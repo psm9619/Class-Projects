@@ -1,0 +1,31 @@
+# Crawling
+# Scrapping
+
+# 웹페이지에서 작성하는 기본 툴
+# 구성 3 요서: html5 + CSS3 + JavaScript
+# html :  구조와 내용
+# css : 모양
+# javascript : 행동 및 응용 프로그램
+
+# html 로 구조와 내용 만들기
+# head : 메타 데이터, 즉 웹 의 타이틀 및 css 경로 등 
+# body : 
+# css 로 문서 모양 만들기
+# Javascript 코드로 사용자 인터페이스 처리
+
+# 웹 개발에는 ATOM (open source)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
