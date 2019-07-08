@@ -1,7 +1,11 @@
 library(rJava)
 library(dplyr)
-library(KoNLP)
-library(wordcloud)
+library(KoNLP) 
+library(ggwordcloud)
+library(wordcloud2)
+library(tm)
+library(stringr)
+library(ggplot2)
 useSejongDic()
 #mergeUserDic(data.frame("")) -> 내가 필요로 하는 단어가 사전에 없을 시 추가하는 것 (ex. 지명)
 library(RColorBrewer)
@@ -17,7 +21,7 @@ review <- sapply(data_review, extractNoun, USE.NAMES = F)
    In value[[3L]](cond) :
    can't processing '빡침진짜3에서완벽하게끝내놓고보니는결국우디를버렸고그걸포장하기위해우디가자기삶을찾았다고한듯난마지막에보니가우디를다시사랑할줄알았는데보니도ㅗ쉽게헤어지는버즈랑우디도그렇고간다니까보내준친구들도이해안됨차라리보지말걸내마음속에있는아름다운엔딩이거지같아짐돈벌라고한편더만든느낌쉣 "
 # 전처리를 위해 직접 spacing 을 하여 extractNoun 을 재실행 한다.
-data_review[4713] <- "빡침 진짜 3에서 완벽하게 끝내놓고 보니는 결국 우디를 버렸고
+data_review[4747] <- "빡침 진짜 3에서 완벽하게 끝내놓고 보니는 결국 우디를 버렸고
 그걸 포장하기 위해 우디가 자기 삶을 찾았다고 한 듯 난 마지막에 보니가 우디를 다시 사랑할 줄 알았는데
 보니도 ㅗ 쉽게 헤어지는 버즈랑 우디도 그렇고 간다니까 보내준 친구들도 이해 안 됨 
 차라리 보지 말 걸 내 마음속에 있는 아름다운 엔딩이 거지 같아짐 돈 벌라고 한 편 더 만든 느낌 쉣 "
@@ -30,7 +34,7 @@ head(review_2)
 
 review_2 <- unlist(review_2)
 
-length(table(review_2))  # 현재 단어의 총 수는 8755  
+length(table(review_2))  # 현재 단어의 총 수는 8829  
 
 
 # 전처리를 위해 데이터를 훑는 방법으로 전체 데이터 length 에서 50 region index 를 random generator 을 이용해 뽑았다.
@@ -104,47 +108,59 @@ length(table(review_replaced_2))  # 현재 단어 수는 6633 으로 다시 1000
 
 review_replaced_3 <- review_replaced_2
 
-review_replaced_3 <- gsub ("개재","재미", review_replaced_3)
-review_replaced_3 <- gsub ("고마", "고마움", review_replaced_3)
-review_replaced_3 <-gsub ( "깜" , "깜짝", review_replaced_3)
-review_replaced_3 <-gsub ("재", "재미", review_replaced_3)
-review_replaced_3 <-gsub ("기다", "기다림", review_replaced_3)
-review_replaced_3 <-gsub ("꿀", "재미", review_replaced_3)
-review_replaced_3 <-gsub ( "놀","놀다", review_replaced_3)
-review_replaced_3 <-gsub ("느끼", "느낌", review_replaced_3)
-review_replaced_3 <-gsub ("돈", "돈아까움", review_replaced_3)
-review_replaced_3 <-gsub (  "돌아" , "돌아간기분", review_replaced_3)
-review_replaced_3 <-gsub ("두번", "두번보세요", review_replaced_3)
-review_replaced_3 <-gsub ("떠나보", "떠나보냄", review_replaced_3)
-review_replaced_3 <-gsub ("떠", "떠남", review_replaced_3)
-review_replaced_3 <-gsub ("또보" , "또보고싶음", review_replaced_3)
-review_replaced_3 <-gsub ( "만나", "만남", review_replaced_3)
-review_replaced_3 <-gsub ("많", "많음", review_replaced_3)
-review_replaced_3 <-gsub ("말","말이필요없음", review_replaced_3)
-review_replaced_3 <-gsub ( "보고싶", "보고싶을거야", review_replaced_3)
-review_replaced_3 <-gsub ( "못느", "못느낌", review_replaced_3)
-review_replaced_3 <-gsub ("빵","빵빵터짐", review_replaced_3)
-review_replaced_3 <-gsub ("슬", "슬픔", review_replaced_3)
-review_replaced_3 <-gsub ( "애","아이들", review_replaced_3)
-review_replaced_3 <-gsub ( "어린", "어린시절", review_replaced_3)
-review_replaced_3 <-gsub ("울", "울음", review_replaced_3)
-review_replaced_3 <-gsub ( "잊", "잊혀짐", review_replaced_3)
-review_replaced_3 <-gsub ( "재밌", "재미", review_replaced_3)
-review_replaced_3 <-gsub ("좋", "좋음", review_replaced_3)
-review_replaced_3 <-gsub ("픽사", "픽사다움", review_replaced_3)
+review_replaced_3 <- gsub ("개재\\S*","재미", review_replaced_3)
+review_replaced_3 <- gsub ("고마\\S*", "고마움", review_replaced_3)
+review_replaced_3 <-gsub ( "깜\\S*" , "깜짝", review_replaced_3)
+review_replaced_3 <-gsub ("재\\S*", "재미", review_replaced_3)
+review_replaced_3 <-gsub ("기다\\S*", "기다림", review_replaced_3)
+review_replaced_3 <-gsub ("꿀\\S*", "재미", review_replaced_3)
+review_replaced_3 <-gsub ( "놀\\S*","놀다", review_replaced_3)
+review_replaced_3 <-gsub ("느끼\\S*", "느낌", review_replaced_3)
+review_replaced_3 <-gsub ("돈\\S*", "돈아까움", review_replaced_3)
+review_replaced_3 <-gsub (  "돌아\\S*" , "돌아간기분", review_replaced_3)
+review_replaced_3 <-gsub ("두번\\S*", "두번보세요", review_replaced_3)
+review_replaced_3 <-gsub ("떠나보\\S*", "떠나보냄", review_replaced_3)
+review_replaced_3 <-gsub ("떠\\S*", "떠남", review_replaced_3)
+review_replaced_3 <-gsub ("또보\\S*" , "또보고싶음", review_replaced_3)
+review_replaced_3 <-gsub ( "만나\\S*", "만남", review_replaced_3)
+review_replaced_3 <-gsub ("많\\S*", "많음", review_replaced_3)
+review_replaced_3 <-gsub ("말\\S*","말이필요없음", review_replaced_3)
+review_replaced_3 <-gsub ( "보고싶\\S*", "보고싶을거야", review_replaced_3)
+review_replaced_3 <-gsub ( "못느\\S*", "못느낌", review_replaced_3)
+review_replaced_3 <-gsub ("빵\\S*","빵빵터짐", review_replaced_3)
+review_replaced_3 <-gsub ("슬\\S*", "슬픔", review_replaced_3)
+review_replaced_3 <-gsub ( "애\\S*","아이들", review_replaced_3)
+review_replaced_3 <-gsub ( "어린\\S*", "어린시절", review_replaced_3)
+review_replaced_3 <-gsub ("울\\S*", "울음", review_replaced_3)
+review_replaced_3 <-gsub ( "잊\\S*", "잊혀짐", review_replaced_3)
+review_replaced_3 <-gsub ( "재밌\\S*", "재미", review_replaced_3)
+review_replaced_3 <-gsub ("좋\\S*", "좋음", review_replaced_3)
+review_replaced_3 <-gsub ("픽사\\S*", "픽사다움", review_replaced_3)
 
 head(review_replaced_3)
-length(table(review_replaced_3)) # -2 로 별로 줄지는 않았다. 사실상 효율적이지 않고, 효과적이지도 않은 전처리였으나 노력의 의미로 그대로 사용하기로 한다.
+length(table(review_replaced_3)) # 6019로 600정도 줄었다. 예상보다 확연한 감소는 아닌만큼 시간대비 효율적이지 않은 전처리였으나 시도에 의의를 두기로 한다.
 
 # 이제 띄어쓰기 등의 문제로 extract noun 이 성공적으로 되지 못한 데이터 (nchar <= 1 | nchar >=10) 을 제거한다.
-not_extracted <- Filter(function(x) {nchar(x) >= 1 | nchar(x) <= 10}, review_replaced_3)
-not_extracted [1:300]
+review_final <- Filter(function(x) {nchar(x) >= 2 | nchar(x) <= 10}, review_replaced_3)
+review_final [1:300]
+review_final <- sort()
+review_final %>% head(10)
+palete <- brewer.pal(10, "Set3")
+table.review <- table(review_final)
+str(table.review)
+
+wordcloud2(table.review, 
+           size=2, col="random-light", 
+           backgroundColor="black", fontFamily='나눔바른고딕')
 
 
 
-
-
-
+df.review <- as.data.frame(table.review)
+str(df.review)
+ggplot (df.review, aes(label = review_final, size = Freq)) +
+  geom_text_wordcloud_area(rm_outside=TRUE) +
+  scale_size_area(max_size = 20) +
+  theme_minimal()
 
 
 
