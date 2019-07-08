@@ -66,9 +66,8 @@ View(ordered)
 
 rev <- ordered$review
 str(rev)
-
-write.csv(ordered, "navermoview.csv")
-
+View(rev)
+write.csv(ordered, "navermovie_toystory.csv")
 
 
 
