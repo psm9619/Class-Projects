@@ -51,7 +51,7 @@ for (i in index) {
 # test[1:300] ; test[301:600] ; test[601:900] ; test[901:1200] ; test[1201:1500]
 t_gsub <- c("\\W", "\\d+",'[ㄱ-ㅎ]',"(ㅜ|ㅠ)","[[:punct:][:lower:][:upper:]]", 
              "였\\S*", "줄\\S*", "까지\\S*", "합니\\S*", 
-            "어쩐지", "냐\\S*", "쥐\\S*", "관람객" )
+            "어쩐지", "냐\\S*", "쥐\\S*", "관람객", "토이스토\\S*" )
 write(t_gsub, 'sub.txt')
 sub <- readLines('sub.txt')
 # 지속적인 활용을 위해 replace 해야 할 데이터를 txt 파일로 별개저장한다.
@@ -141,29 +141,31 @@ head(review_replaced_3)
 length(table(review_replaced_3)) # 6019로 600정도 줄었다. 예상보다 확연한 감소는 아닌만큼 시간대비 효율적이지 않은 전처리였으나 시도에 의의를 두기로 한다.
 
 # 이제 띄어쓰기 등의 문제로 extract noun 이 성공적으로 되지 못한 데이터 (nchar <= 1 | nchar >=10) 을 제거한다.
-review_final <- Filter(function(x) {nchar(x) >= 2 | nchar(x) <= 10}, review_replaced_3)
-review_final [1:300]
-review_final <- sort()
-review_final %>% head(10)
-palete <- brewer.pal(10, "Set3")
-table.review <- table(review_final)
+review_final <- Filter(function(x) {nchar(x) >= 2 & nchar(x) <= 10}, review_replaced_3)
+
+table.review <- table(review_final) 
 str(table.review)
 
-wordcloud2(table.review, 
+df.review <- as.data.frame(table.review)  # using just df.review took too long time for loading
+df.review.2 <-   df.review %>%
+  arrange(desc(Freq))  %>%
+  head(300)
+
+wordcloud2(as.table(df.review.2), 
            size=2, col="random-light", 
-           backgroundColor="black", fontFamily='나눔바른고딕')
+           backgroundColor="black")
 
 
-
-df.review <- as.data.frame(table.review)
 str(df.review)
 ggplot (df.review, aes(label = review_final, size = Freq)) +
   geom_text_wordcloud_area(rm_outside=TRUE) +
   scale_size_area(max_size = 20) +
   theme_minimal()
+figPath = system.file("examples/t.png",package = "wordcloud2")
+wordcloud2(demoFreq, figPath = figPath, size = 1.5,color = "skyblue")
 
-
-
+wordcloud2(demoFreq, minRotation = -pi/6, maxRotation = -pi/6, minSize = 10,
+           rotateRatio = 1)
 
 
 
