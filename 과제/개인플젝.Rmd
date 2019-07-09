@@ -1,3 +1,12 @@
+---
+title: "Project_wordcloud"
+author: "Park, Soomin"
+date: '2019 7 9 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(rvest)
 library(rJava)
 library(dplyr)
 library(KoNLP) 
@@ -7,47 +16,140 @@ library(wordcloud2)
 library(tm)
 library(stringr)
 library(ggplot2)
+library(ggpubr)
+
 useSejongDic()
 #mergeUserDic(data.frame("")) -> 내가 필요로 하는 단어가 사전에 없을 시 추가하는 것 (ex. 지명)
 library(RColorBrewer)
-View(data1)
-data1 <- read.csv("navermovie_toystory.csv", stringsAsFactors = F)
-data1$review[c(4770, 4774)] <- "빡침 진짜 3에서 완벽하게 끝내놓고 보니는 결국 우디를 버렸고
-그걸 포장하기 위해 우디가 자기 삶을 찾았다고 한 듯 난 마지막에 보니가 우디를 다시 사랑할 줄 알았는데
-보니도 ㅗ 쉽게 헤어지는 버즈랑 우디도 그렇고 간다니까 보내준 친구들도 이해 안 됨 
-차라리 보지 말 걸 내 마음속에 있는 아름다운 엔딩이 거지 같아짐 돈 벌라고 한 편 더 만든 느낌 쉣 "
+library(devtools)
+devtools::install_github("lchiffon/wordcloud2")
 
+trim <- function(x) gsub("^\\s+|\\s+$", "", x)
+```
+
+## 영화 평론 가져오기 
+### 토이 스토리 4, Naver Movie
+
+#### 1. URL 가져오기 - iframe.ifr 주소
+```{r}
+
+url_base <- 'https://movie.naver.com' 
+start_url <- '/movie/bi/mi/point.nhn?code='
+code <- '101966#tab'
+url <- paste0(url_base, start_url, code, encoding="euc-kr")
+html <- read_html(url) %>%
+  html_node('iframe.ifr') %>% html_attr('src') -> url2
+```
+
+#### 2. 전체 데이터 수 & 페이지 수 구하기
+```{r}
+ifr_url <- paste0(url_base, url2) 
+
+count <- read_html(ifr_url) %>%  html_node("div.score_total") %>%
+         html_node(".total") %>% html_text('em')
+
+index <- str_locate(count, "총") 
+count <- str_sub(count, index[1]+1, -2)
+totcount <- as.numeric(gsub(",","", count)) 
+
+(pages <- ceiling(totcount/10))
+```
+
+#### 3. 
+```{r}
+tot_review <- data.frame()
+for (pg in 1:pages) {
+  url <- paste0 (ifr_url, '&page=', pg)
+  if (pg %% 100 == 0)
+    print (pg)
+  html2 <- read_html(url) %>%
+    html_node('div.score_result') %>%
+    html_nodes('li') -> lis
+  
+  score <- c()  ; review <- c()  ; writer <- c()  ;  time <- c()
+  for (li in lis) {
+    score <- c(score, html_node(li, '.star_score') %>% html_text('em') %>% trim())
+    
+    (tmp <- li %>%
+        html_node('.score_reple') %>%
+        html_text ('p')  %>%
+        trim())
+    
+    index <- str_locate(tmp, "\r")
+    (review <- c(review, 
+                 str_sub(tmp, 1, index[1]-1)))
+    tmp <- trim(str_sub(tmp, index[1], -1))
+    index <- str_locate(tmp, "\r")
+    (writer <- c(writer, str_sub(tmp, 1, index[1]-1)))
+    tmp <- trim(str_sub(tmp, index[1], -1))
+    index <- str_locate(tmp, "\r")
+    (time <- c(time, str_sub(tmp, 1, index[1]-1)))
+  }
+  
+  review = data.frame(score=score, review=review, writer=writer, time=time, stringsAsFactors = F)
+  tot_review <- rbind.data.frame(tot_review, review) 
+}
+```
+
+#### 4. 
+```{r}
+tot_review$score <- factor(tot_review$score, levels = c(1:10), ordered = T)
+ordered <- tot_review %>%
+  arrange(desc(score))
+```
+
+#### 5. 
+```{r}
+rev <- ordered$review
+str(rev)
+write.csv(ordered, "navermovie_toystory.csv")
+```
+
+<br> <br>
+
+## 영화 평론 분석
+
+#### 1. 데이터 읽어오기
+```{r}
+data1 <- read.csv("navermovie_toystory.csv", stringsAsFactors = F)
 data_review <- data1$review
 
-review_2 <- sapply(data_review, extractNoun, USE.NAMES = F)
-head(review_2) 
-# 더 이상 processing 에러가 뜨지 않음을 확인할 수 있다.
-# 아마도 spacing 문제로 인해 noun extraction 이 성공적으로 이루어지지 않은 경우가 몇 가지 눈에 띈다. (ex. 아시아최초로, 같은거왜보냐정신연령이그정도 등 )
-# 그러나 전체적으로는 양호한 면을 보이므로 전처리 중에 해결하도록 한다. 
+```
 
+```{r}
+review_2 <- sapply(data_review, extractNoun, USE.NAMES = F)
+
+```
+
+#### * review 프로세싱에서 "java.lang.ArrayIndexOutOfBoundsException 에러가 발생하여 확인하자, spacing 이 되지 않은 경우였다.
+#### 이 경우는 전체적인 데이터에 지나치게 문제가 되지 않는, 1개의 이슈이므로 우선 넘어가도록 한다.
+
+```{r}
+head(review_2) 
 review_2 <- unlist(review_2)
 
-length(table(review_2))  # 현재 단어의 총 수는 8826 
+length(table(review_2))  
+```
 
+#### * 아마도 spacing 문제로 인해 noun extraction 이 성공적으로 이루어지지 않은 경우가 몇 가지 눈에 띈다. 그러나 전체적으로는 양호한 면을 보이므로 전처리 중에 해결하도록 한다. 
+#### * 현재 단어의 총 수는 8829 이다.
 
-# 전처리를 위해 데이터를 훑는 방법으로 전체 데이터 length 에서 50 region index 를 random generator 을 이용해 뽑았다.
-set.seed(123)
-index <- sample(1:(length(review_2)-31), 50, replace=FALSE)
-index  
-# 각 인덱스로부터 30씩 데이터를 뽑아서 새로운 list 에 저장한다. 
-test <- c()
-for (i in index) {
-  test <- c(test, review[i:(i+29)])
-} 
-# 총 3000 개의 데이터가 있으므로 300씩 끊어 검사하며 전처리에 사용할 데이터를 t_gsub list 로 저장한다.
+<br>
 
-# test[1:300] ; test[301:600] ; test[601:900] ; test[901:1200] ; test[1201:1500]
+#### 2. text 전처리를 위한 리스트 작성
+
+```{r}
 t_gsub <- c("\\W", "\\d+",'[ㄱ-ㅎ]',"(ㅜ|ㅠ)","[[:punct:][:lower:][:upper:]]", 
-             "였\\S*", "줄\\S*", "까지\\S*", "합니\\S*","들이\\S*", 
+             "였\\S*", "줄\\S*", "까지\\S*", "합니\\S*", "들이\\S*",
             "어쩐지", "냐\\S*", "쥐\\S*", "관람객", "토이스토\\S*" )
 write(t_gsub, 'sub.txt')
 sub <- readLines('sub.txt')
 # 지속적인 활용을 위해 replace 해야 할 데이터를 txt 파일로 별개저장한다.
+```
+
+#### 3. gsub 및 글자 수 전처리
+  a. 
+```{r}
 # 해당 데이터를 하나씩, review_2 를 카피한 review_replaced 에 적용 한다. 이 때, sub 하나마다 다시 review_replaced 를 처음부터 끝까지 반복 적용해야 하므로 중첩 사용된다.
 review_replaced <- review_2
 for (i in sub) {
@@ -55,18 +157,24 @@ for (i in sub) {
       review_replaced [k] <- gsub(i, "", review_replaced[k])
    }
 } 
-
-# 추가적으로 위에서 검토 중에 눈에 띄던 '관람객' + '..' 와 같이 주된 단어 뒤에 내용이 추가될시 제대로 파악되지 않는 경우를 해결하기 위해 약간의 전처리를 더 해준다.
-# 이 떄 데이터의 선택은 count 빈도수가 <= 2 인 경우로 잡는다. 
 t <- table(review_replaced)
-length(t)  # 현재 단어의 총 수는 7636 위의 전처리 후 대략 1000 이 감소. 
+length(t)
+```
+
+#### * 현재 단어의 총 수는 7638 으로 위의 전처리 이전보다 1000 정도 감소했다.
+
+<br>
+
+ b.
+#### 추가적으로 위에서 검토 중에 눈에 띄던 '관람객' + '..' 와 같이 주된 단어 뒤에 내용이 추가될시 제대로 파악되지 않는 경우를 해결하기 위해 약간의 전처리를 더 해준다.
+#### 이 때 데이터의 선택은 count 빈도수가 <= 2 인 경우로 잡는다. 
+```{r}
 repeated <- c()
 for (i in 1:length(t)) {
-   if (t[i] <= 2) {
-      
-   }
+   if (t[i] <= 2) 
        repeated <- c(repeated, t[i])
 } 
+
 # ~6400 여개의 데이터가 뽑히는데 이 중 500개씩 훑어서 같은 맥락으로 5번 이상 반복되는 것으로 보이는 단어들만 뽑아 전처리를 추가한다.
 # repeated[1:500] 
 # repeated[501:1000]
@@ -82,7 +190,6 @@ for (i in 1:length(t)) {
 # repeated[5501:6000]
 # repeated[-c(1:6000)]
 
-
 rep <- c( "가족", "가정", "감동", "강추", "결말", "기대", "기본", "끝", "나이", "너무", "노잼", "눈물","다른","다시", "다음", "대박", "덕후", "동심","딸",
           "레전드", "렉스", "마음","마지막", "매력", "먹먹", "명작", "뭉클", "미국", "버즈", "번외","별로","보니", "분리","빌런", "사랑","새드엔딩", "새로운",
           "생각","세대","소름", "손수건","스토리", "시리즈", "실망","아이들","아이언맨","알라딘","암","앤디","어른","어벤져스","억지", "우디","울컥", 
@@ -97,7 +204,13 @@ for (i in rep) {
    }
 }
 head(review_replaced_2) ; head(review_replaced)  # 기존의 review_replaced 와 비교시, 위의 추가 전처리 후에는 '보니야' 라는 단어가 '보니' 로 줄어들었음을 볼 수 있다.  
-length(table(review_replaced_2))  # 현재 단어 수는 6675 으로 다시 1000 정도 감소한다.
+length(table(review_replaced_2))
+
+```
+#### * 현재 단어의 총 수는 6677 으로 위의 전처리 이전보다 1000 정도 감소했다.
+
+ c.
+```{r}
 
 review_replaced_3 <- review_replaced_2
 
@@ -130,34 +243,57 @@ review_replaced_3 <-gsub ("좋\\S*", "좋음", review_replaced_3)
 review_replaced_3 <-gsub ("픽사\\S*", "픽사다움", review_replaced_3)
 
 head(review_replaced_3)
-length(table(review_replaced_3)) # 6035로 600정도 줄었다. 예상보다 시간대비 그리 효율적이지는 않았으나 시도에 의의를 두기로 한다.
+length(table(review_replaced_3))
+
+```
+#### * 현재 단어의 총 수는 6037 으로 위의 전처리 이전보다 600 정도 감소했다.
+#### * 예상보다 시간대비 그리 효율적이지는 않았으나 시도에 의의를 두기로 한다.
+
+ d. 
+```{r}
 
 # 이제 띄어쓰기 등의 문제로 extract noun 이 성공적으로 되지 못한 데이터 (nchar <= 1 | nchar >=10) 을 제거한다.
 review_final <- Filter(function(x) {nchar(x) >= 2 & nchar(x) <= 10}, review_replaced_3)
-
 table.review <- table(review_final) 
-str(table.review)
+length(table.review)
+```
 
+#### * 현재 단어의 총 수는 5558 으로 위의 전처리 이전보다 500 정도 감소했다.
+
+
+#### 4. 마침내, Word Cloud!
+```{r}
 df.review <- as.data.frame(table.review)  # using just df.review took too long time for loading
 df.review.2 <-   df.review %>%
    filter (Freq >= 10)
+```
+#### * df.review.2 는 df.review 에서도 Freq 가 10 이상인 데이터만 따로 뽑아낸 것. 이것으로 아래의 그래픽을 작성한다.
 
-library(devtools)
-devtools::install_github("lchiffon/wordcloud2")
+```{r}
+
+wordcloud2(df.review.2, 
+           size=2, col="random-light", 
+           backgroundColor="black")
+```
+
+### 대체적으로 긍정적이고 감정을 대변하는 단어가 높은 빈도로 나타난다. 예를 들면 '감동', '사랑', '슬픔', '눈물' 등이 있고 해당 영화가 전작으로부터 거의 9년 만에 개봉함과 관련해 예고편부터 시사된 바 있었던 '어린 시절의 향수' 에 관련한 단어들도 보인다. 예를 들면 '어른','어린시절', '여운', '추억', '나이', '마지막','성장' 등이 있다. 또한 '디즈니' 라는 단어와 주인공들의 이름인 '우디', '버즈', '보핍' 등이 자주 보이는 것으로 보아 관객들이 제작사에게 관심이 있고, 주인공들에게도 감정적인 이입을 할 수 있었던, 좋은 완성도를 보이는 작품으로 인식된다.
 
 
+```{r}
 wordcloud2(df.review.2, figPath = "토이스토리_우디.png", size = 1.5,
            color = "random-dark")
+```
+
+* 두 번째 wordcloud2 는 토이스토리_우디 의 실루엣을 mask 로 이용한 그래픽이나, library(wordcloud2) 의 writer 가 인정한 아직 고쳐지지 않은 버그의 영향으로, html 에서 보이지 않고, 일반 R Script 에서 또한 png 로 직접 저장이 되지 않는다. 따라서 screen capture 을 이용하여 별개 저장하였다.
 
 
-# 위에서 에러가 난 바가 있는 데이터를 미리 fix 한다.
-data1$review[c(4770, 4774)] <- "빡침 진짜 3에서 완벽하게 끝내놓고 보니는 결국 우디를 버렸고
-그걸 포장하기 위해 우디가 자기 삶을 찾았다고 한 듯 난 마지막에 보니가 우디를 다시 사랑할 줄 알았는데
-보니도 ㅗ 쉽게 헤어지는 버즈랑 우디도 그렇고 간다니까 보내준 친구들도 이해 안 됨 
-차라리 보지 말 걸 내 마음속에 있는 아름다운 엔딩이 거지 같아짐 돈 벌라고 한 편 더 만든 느낌 쉣 "
 
-## 아래는 평점이 10 ~ 8인, Positive review 로 분류된 데이터이다.
+<br><br>
 
+###  이제는 평점별로 10~8, 7~4, 3~1 로 나누어 사람들의 호응도에 따른 언어적 표현 빈도를 알아보자. (pos, mid, neg)
+
+#### 아래는 평점이 8~10 인, Positive review 로 분류된 데이터이다.
+```{r}
 data2 <- data1 %>%
    filter(score >= 8)
 pos_review_data <- data2$review   
@@ -217,15 +353,13 @@ pos_4 <-gsub ("픽사\\S*", "픽사다움", pos_4)
 pos_review_final <- Filter(function(x) {nchar(x) >= 2 & nchar(x) <= 10}, pos_4)
 
 
+```
 
-# -------
-#--------
-
-
-# 아래는 평점 7~4 대의 평론 분석이다.
+#### 아래는 평점 4~7 대의 평론 분석이다.
+```{r}
 
 data3 <- data1 %>%
-   filter(score >= 4 & score <= 7) ; data3
+   filter(score >= 4 & score <= 7)
 mid_review_data <- data3$review   
 
 mid_review <- sapply(mid_review_data, extractNoun, USE.NAMES = F)
@@ -281,11 +415,11 @@ mid_4 <-gsub ("좋\\S*", "좋음", mid_4)
 mid_4 <-gsub ("픽사\\S*", "픽사다움", mid_4)
 
 mid_review_final <- Filter(function(x) {nchar(x) >= 2 & nchar(x) <= 10}, mid_4)
+```
 
-#--------
-#--------
 
-# 아래는 평점 3 점 이하의 평론 분석이다.
+#### 아래는 평점 3 점 이하의 평론 분석이다.
+```{r}
 
 data4 <- data1 %>%
    filter(score <= 3) 
@@ -345,7 +479,10 @@ neg_4 <-gsub ("픽사\\S*", "픽사다움", neg_4)
 
 neg_review_final <- Filter(function(x) {nchar(x) >= 2 & nchar(x) <= 10}, neg_4)
 
-#--------
+```
+
+#### pos, mid, neg 레벨의 리뷰를 각각 table 화, 그리고 data frame 화 한다.
+```{r}
 table.pos <- table(pos_review_final)
 table.mid <- table(mid_review_final) 
 table.neg <- table(neg_review_final) 
@@ -367,75 +504,12 @@ df.neg_2 <- df.neg %>%
    select(review, Freq) %>%
    head(200)
 
-ggplot(d, aes(label = review, size=pct)) +
-   geom_text_wordcloud_area(shape = "circle") +
-   scale_color_gradientn(colours = rainbow(5)) +
-   scale_size_area(max_size=25) +
-   theme_minimal() +  facet_wrap(~label)
+
+```
 
 
-par(mfrow=c(1,2))
-palete <- brewer.pal(10, "Spectral")
-w1 <- wordcloud(names(table.pos), freq = table.pos, scale = c(4,0.5),
-          rot.per=0.25, min.freq=20, max.words=100, 
-          random.order=F, random.color=T, colors=palete)
-
-
-set.seed(42)
-for (i in dfs) {
-   print(
-      ggplot(i, aes(label = review, size=Freq, color=Freq)) +
-         geom_text_wordcloud_area(shape="diamond") +
-         scale_size_area(max_size=25) +
-         theme_minimal() +  facet_wrap(~type)
-   )
-}
-
-
-
-ggplot(df.neg_2, aes(label = neg_review_final, size = Freq)) +
-   geom_text_wordcloud_area(
-      mask = png::readPNG(system.file("extdata/hearth.png",
-                                      package = "ggwordcloud", mustWork = TRUE))) +
-   scale_size_area(max_size = 18) +
-   theme_minimal()
-
-
-
-
-
-table.pos <- table(pos_review_final) 
-str(table.pos)
-
-df.pos <- as.data.frame(table.pos)  # using just df.review took too long time for loading
-df.pos.2 <-   df.pos %>%
-   filter (Freq >= 10)
-palete <- brewer.pal(9, "Set3")
-
-wordcloud2(df.review.2, figPath = "토이스토리_우디.png", size = 1.5,
-           color = "random-light", background="grey15")
-
-ggplot(df.review)
-par(mfrow=c(1,3))
-for (i in dfs) {
-  print(wordcloud2(i, 
-              size=2, col="random-light", 
-              backgroundColor="black"))
-}
-
-
-wordcloud2(po, 
-           size=2, col="random-light", 
-           backgroundColor="black")
-
-wordcloud2(dfs[2], 
-           size=2, col="random-light", 
-           backgroundColor="black")
-
-
-View(data1)
-
-
+** wordcloud2 의 버그 문제로 html 에 뜨지 않는 그래픽은 별개로 제출함 
+```{r}
 wordcloud2(df.pos_2, 
            size=1, col="random-light", 
            backgroundColor="black")
@@ -448,11 +522,13 @@ wordcloud2(df.neg_2,
            size=1, col="random-light", 
            backgroundColor="black")
 
-pos_10 <- df.pos_2 %>% head(10) 
-mid_10 <- df.mid_2 %>% head(10)
-neg_10 <- df.neg_2 %>% head(10)
+```
 
+<br>
 
+#### 총 세 단계로 구분된 리뷰들에서 모두 공통적으로 쓰인 단어를 common_3sets 으로 정의한다. 또한 긍정과 부정 리뷰에서 공통적으로 쓰인 단어를 common_PosNeg 라고 이름하였다.
+#### 긍정적인 리뷰 (평점 8~10) 에서만 쓰인 단어 top 20 과 부정적인 리뷰 (평점 1~3) 단어 top 20 을 각각 대조하였다.
+```{r}
 common_3sets <- intersect(intersect(df.pos_2$review, df.mid_2$review), df.neg_2$review)
 common_PosNeg <- intersect(df.pos_2$review, df.neg_2$review)
 head(common_PosNeg)
@@ -472,6 +548,14 @@ Pos_Neg <- data.frame (only_Pos30 = only_Pos$review, p.Freq = only_Pos$Freq,
 Pos_Neg
 
 
+
+
+
+```
+
+#### word cloud 비교
+```{r}
+
 a <- ggplot(Pos_Neg, aes(label = only_Pos30, size = p.Freq, color=p.Freq)) +
    geom_text_wordcloud_area(shape="diamond") +
    scale_size_area(max_size = 24) +
@@ -484,16 +568,22 @@ b <- ggplot(Pos_Neg, aes(label = only_Neg30, size = n.Freq, color=n.Freq)) +
    theme(panel.background = element_rect(fill = 'grey3')) +
    scale_color_gradient(low = "white", high = "blue")
 
-c <- geom_text_wordcloud (data = Pos_Neg, aes(label = only_Neg30, size = n.Freq, color=n.Freq)) +
-   geom_text_wordcloud_area(shape="diamond") +
-   scale_size_area(max_size = 24) +
-   theme(panel.background = element_rect(fill = 'grey3')) +
-   scale_color_gradient(low = "white", high = "blue")
 ggarrange (a,b)
 
-wordcloud2(df.review.2, 
-           size=2, col="random-light", 
-           backgroundColor="black")
+```
+
+
+### 이로써 긍정적인 리뷰의 대표적인 언어는 일반적으로도 긍정과 칭찬의 의미를 갖는, '최고', '좋음' 등과 위의 통합 언어분석에서도 지속적으로 눈에 띈 '어린 시절', '향수' 등과 맥락을 함께하는 '여윤', '어른', '성장' 등의 의미가 대표적으로 보인다. 또 영화사인 픽사에 대한 호의적인 태도 도 눈에 띈다.
+
+<br>
+
+### 반면 부정적인 리뷰의 대표적인 언어는, 매우 강한 어조로 부정을 이야기하는 태도가 눈에 띄었다. 예를 들면 '최악', '노잼', '붕괴' 등의 매우 파괴적인 언어의 사용이 있었으며, '억지', '무시', '짜증' 등의 감정적인 반응도도 매우 부정적이다. 또한 '감독', '멤버', '악역', '주제' 등의 영화사 자체보다 제작자들과 구성원들에 대한 조금 더 직접적인 비난의도가 드러난다고 할 수 있다.
+
+<br> <br>
+
+### 이로서 6/20 일 개봉한 토이스토리 4 에 대한 현재까지의 관객 반응도를, Naver Movie 크롤링과 word cloud 분석을 통해 알아보았다.
+
+<br> <br>
 
 
 
